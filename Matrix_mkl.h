@@ -9,6 +9,7 @@
 #include <fstream>
 #include <map>
 #include "mkl.h"
+#include "udf.h"
 
 using namespace std;
 
@@ -55,7 +56,8 @@ public:
 
 	void zero() {
 		for (int i = 0; i < (row*col); ++i) {
-			index[i] = 0;.
+			index[i] = 0;
+		}
 	}
 
 	friend istream& operator>>(istream& is, Matrix& obj) {
@@ -193,7 +195,10 @@ public:
 
 	Matrix& operator=(const Matrix& obj) {
 		mkl_free(index);
-		Matrix *this(obj);
+		row = obj.row;
+		col = obj.col;
+		index = (double *)mkl_malloc( row*col*sizeof( double ), 64 );
+		cblas_dcopy(row*col, obj.index, 1, index, 1);
 		return *this;
 	}
 
@@ -210,245 +215,52 @@ public:
 	Matrix block(int x, int y, int new_row, int new_col) {
 		Matrix tmp(new_row, new_col);
 		for (int i = 0; i < new_row; ++i) {
-			for (int j = 0; j < new_col; ++j) {
-				tmp.index[i][j] = index[x + i][y + j];
-			}
-			cblas_dcopy(row, index + i, col, tmp.index + i*row, 1);
+			cblas_dcopy(new_col, index + (i + x)*col, 1, tmp.index + i*new_col, 1);
 		}
 		return tmp;
 	}
 
-	//合并分块矩阵
-	
-
 	//行交换
 	void swaprow(const int i, const int j) {
-		double* tmp = index[i];
-		index[i] = index[j];
-		index[j] = tmp;
+		cblas_dswap(col, index + i*col, 1, index + j*col, 1);
 	}
 
 	//行变换
 	void rowmultik(int k, double x) {
-		for (int i = 0; i < col; ++i) {
-			index[k][i] *= x;
-		}
-	}
-
-	//求矩阵任意元素的余子式
-	double cofactor(const int x, const int y) {
-		double tmp;
-		Matrix M1(row - 1, row - 1);
-		for (int i = 0; i < row; ++i) {
-			if (i == x) {
-				continue;
-			}
-			for (int j = 0; j < col; ++j) {
-				if (j == y) {
-					continue;
-				}
-				if (i < x) {
-					if (j < y) {
-						M1.index[i][j] = index[i][j];
-					}
-					else {
-						M1.index[i][j - 1] = index[i][j];
-					}
-				}
-				else {
-					if (j < y) {
-						M1.index[i - 1][j] = index[i][j];
-					}
-					else {
-						M1.index[i - 1][j - 1] = index[i][j];
-					}
-				}
-			}
-		}
-		tmp = M1.value();
-		return tmp;
-	}
-
-	//求行列式的值
-	double value() {
-		Matrix tmp(*this);
-		int count = 0;
-		int i, j, k;
-		double det = 1, tp;
-		for (i = 0; i < row; ++i) {
-			if (tmp.index[i][i] == 0) {
-				for (j = i + 1; j < col; ++j) {
-					if (tmp.index[j][i] != 0) {
-						tmp.swaprow(i, j);
-						++count;
-						break;
-					}
-				}
-				if (j == col) {
-					return 0;
-				}
-			}
-			for (j = i + 1; j < row; ++j) {
-				if (tmp.index[j][i] != 0) {
-					tp = tmp.index[j][i] / tmp.index[i][i];
-					for (k = i; k < col; ++k) {
-						tmp.index[j][k] -= tp * tmp.index[i][k];
-					}
-				}
-			}
-		}
-		for (i = 0; i < row; ++i) {
-			det *= tmp.index[i][i];
-		}
-		if (count % 2 == 1)
-			det = -det;
-		return det;
-	}
-
-	//判断是否正定
-	bool ifposdef() {
-		for (int i = 1; i <= row; ++i) {
-			if (block(0, 0, i, i).value() <= 0) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	//矩阵修正
-	void modify() {
-		double b1 = 0, tp;
-		for (int i = 0; i < row; ++i) {
-			tp = 2 * index[i][i];
-			for (int j = 0; j < col; ++j) {
-				tp -= index[i][j];
-			}
-			b1 = (tp < b1) ? tp : b1;
-		}
-		for (int i = 0; i < row; ++i) {
-			index[i][i] -= b1;
-		}
-	}
-
-	//求伴随矩阵
-	Matrix adjoint() {
-		Matrix tmp(row, col);
-		for (int i = 0; i < tmp.row; ++i) {
-			for (int j = 0; j < tmp.col; ++j) {
-				if ((i + j) % 2 == 0) {
-					tmp.index[i][j] = cofactor(j, i);
-				}
-				else {
-					tmp.index[i][j] = cofactor(j, i) * (-1);
-				}
-			}
-		}
-		return tmp;
+		cblas_dscal(col, x, index + k*col, 1);
 	}
 
 	//求解线性方程组
-	Matrix solve(const Matrix b) {
+	Matrix LUsolve(const Matrix b, bool& flag) {
 		Matrix A(*this);
-		Matrix b2(b);
-		int i, j;
-		for (i = 0; i < A.row; ++i) {
-			j = i;
-			while (j < A.row && A.index[j][i] == 0) {
-				++j;
-			}
-			if (j == A.row) {
-				cout << "wrong" << endl;
-				A.modify();
-				return A.solve(b);
-			}
-			else {
-				if (i != j) {
-					A.swaprow(i, j);
-					b2.swaprow(i, j);
-				}
-			}
-			//将对角位置转换为1
-			double tmp = 1.0 / A.index[i][i];
-			b2.rowmultik(i, tmp);
-			A.rowmultik(i, tmp);
-			//将该列非对角位置转换为0
-			for (int k = 0; k < A.row; k++) {
-				if (k == i || A.index[k][i] == 0) {
-					continue;
-				}
-				for (j = i + 1; j < A.col; ++j) {
-					A(k, j) -= A(i, j) * A(k, i);
-				}
-				b2(k, 0) -= b2(i, 0) * A(k, i);
-				A(k, i) = 0;
-			}
+		Matrix x(b);
+		int info;
+		int inc = 1;
+		char trans = 'N';
+		int* ipiv = (int *)mkl_malloc( minInt(row, col)*sizeof( int ), 64 );
+		dgetrf(&row, &col, A.index, &row, ipiv, &info);
+		if (info < 0){
+			flag = false;
+			return b;
 		}
-		return b2;
+		dgetrs(&trans, &row, &inc, A.index, &row, ipiv, x.index, &row, &info);
+		return x;
 	}
 
-	//求逆矩阵
-	Matrix inv() {
-		Matrix tmp(*this);
-		Matrix eye(row, col);
-		eye.E();
-		int i, j, k;
-		for (i = 0; i < row; ++i) {
-			//判断对角方向的元素是否为0
-			j = i;
-			while (j < row && tmp.index[j][i] == 0) {
-				++j;
-			}
-			if (j == row) {
-				cout << "该矩阵不可逆！" << endl;
-				return eye;
-			}
-			else {
-				if (i != j) {
-					tmp.swaprow(i, j);
-					eye.swaprow(i, j);
-				}
-			}
-			//将对角位置转换为1
-			double tp = 1.0 / tmp(i, i);
-			eye.rowmultik(i, tp);
-			tmp.rowmultik(i, tp);
-			//将该列非对角位置转换为0
-			for (k = 0; k < row; k++) {
-				if (k == i || tmp.index[k][i] == 0) {
-					continue;
-				}
-				for (j = i + 1; j < col; j++) {
-					tmp.index[k][j] -= tmp(i, j) * tmp(k, i);
-				}
-				for (j = 0; j < col; j++) {
-					eye.index[k][j] -= eye(i, j) * tmp(k, i);
-				}
-				tmp.index[k][i] = 0;
-			}
-		}
-		return eye;
+	//求解线性方程组(对称)
+	Matrix solve(const Matrix b, bool& flag) {
+		Matrix A(*this);
+		Matrix x(b);
+		int info;
+		int inc = 1;
+		int* ipiv = (int *)mkl_malloc( row*sizeof( int ), 64 );
+		dgesv(&row, &inc, A.index, &row, ipiv, x.index, &row, &info);
+		return x;
 	}
 
 	//一维范数
-	double norm1() {
-		double tmp = 0;
-		for (int i = 0; i < row; ++i) {
-			for (int j = 0; j < col; ++j) {
-				tmp += abs(index[i][j]);
-			}
-		}
-		return tmp;
-	}
-
-	//二维范数
-	double norm2() {
-		double tmp = 0;
-		for (int i = 0; i < row; ++i) {
-			for (int j = 0; j < col; ++j) {
-				tmp += index[i][j] * index[i][j];
-			}
-		}
-		return sqrt(tmp);
+	double norm() {
+		return cblas_dnrm2(row*col, index, 1);
 	}
 	
 	//求取两向量夹角
@@ -458,10 +270,6 @@ public:
 			cout << "向量维数不相等！" << endl;
 			return 0;
 		}
-		double tmp = 0;
-		for (int i = 0; i < obj1.row; ++i) {
-			tmp += obj1.index[i][0] * obj2.index[i][0];
-		}
-		return tmp / obj1.norm2() / obj2.norm2();
+		return cblas_ddot(obj1.row, obj1.index, 1, obj2.index, 1) / obj1.norm() / obj2.norm();
 	}
 };
