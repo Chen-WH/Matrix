@@ -18,27 +18,27 @@ class Matrix
 {
 private:
 	int row, col;
-	double* index;
 public:
+	float* index;
 	Matrix(int x = 1, int y = 1) {
 		row = x;
 		col = y;
-		index = (double *)malloc( row*col*sizeof( double ));
+		index = (float *)malloc( row*col*sizeof( float ));
 	}
 
 	Matrix(const Matrix& obj) {
 		row = obj.row;
 		col = obj.col;
-		index = (double *)malloc( row*col*sizeof( double ));
-		cblas_dcopy(row*col, obj.index, 1, index, 1);
+		index = (float *)malloc( row*col*sizeof( float ));
+		cblas_scopy(row*col, obj.index, 1, index, 1);
 	}
 
-	Matrix(double **array, int x, int y) {
+	Matrix(float **array, int x, int y) {
 		row = x;
 		col = y;
-		index = (double *)malloc( row*col*sizeof( double ));
+		index = (float *)malloc( row*col*sizeof( float ));
 		for (int i = 0; i < row; ++i) {
-			cblas_dcopy(row*col, array[i], 1, index + i*col, 1);
+			cblas_scopy(row*col, array[i], 1, index + i*col, 1);
 		}
 	}
 
@@ -47,18 +47,14 @@ public:
 	}
 
 	void E() {
-		for (int i = 0; i < (row*col); ++i) {
-			index[i] = 0;
-		}
+		memset(index, 0, row*col*sizeof( float ));
 		for (int i = 0; i < row; ++i) {
 			index[i*col+i] = 1;
 		}
 	}
 
 	void zero() {
-		for (int i = 0; i < (row*col); ++i) {
-			index[i] = 0;
-		}
+		memset(index, 0, row*col*sizeof( float ));
 	}
 
 	friend istream& operator>>(istream& is, Matrix& obj) {
@@ -91,7 +87,7 @@ public:
 		return col;
 	}
 
-	double& operator()(int x, int y) {
+	float& operator()(int x, int y) {
 		return index[x*col + y];
 	}
 
@@ -102,7 +98,7 @@ public:
 			return *this;
 		}
 		else {
-			cblas_daxpy(row*col, 1, obj.index, 1, index, 1);
+			cblas_saxpy(row*col, 1, obj.index, 1, index, 1);
 			return *this;
 		}
 	}
@@ -114,7 +110,7 @@ public:
 			return *this;
 		}
 		else {
-			cblas_daxpy(row*col, -1, obj.index, 1, index, 1);
+			cblas_saxpy(row*col, -1, obj.index, 1, index, 1);
 			return *this;
 		}
 	}
@@ -125,18 +121,18 @@ public:
 			cout << "维数不符合矩阵相乘原则！" << endl;
 		}
 		else {
-			cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, row, obj.col, col, 1, index, col, obj.index, obj.col, 0, index, obj.col);
+			cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, row, obj.col, col, 1, index, col, obj.index, obj.col, 0, index, obj.col);
 			return *this;
 		}
 	}
 
-	Matrix multp(const double x) {
-		cblas_dscal(row*col, x, index, 1);
+	Matrix multp(const float x) {
+		cblas_sscal(row*col, x, index, 1);
 		return *this;
 	}
 
-	Matrix div(const double x) {
-		cblas_dscal(row*col, 1/x, index, 1);
+	Matrix div(const float x) {
+		cblas_sscal(row*col, 1/x, index, 1);
 		return *this;
 	}
 
@@ -148,10 +144,21 @@ public:
 		}
 		else {
 			tmp.zero();
-			cblas_daxpy(row*col, 1, obj.index, 1, tmp.index, 1);
-			cblas_daxpy(row*col, 1, index, 1, tmp.index, 1);
+			cblas_saxpy(row*col, 1, obj.index, 1, tmp.index, 1);
+			cblas_saxpy(row*col, 1, index, 1, tmp.index, 1);
 			return tmp;
 		}
+	}
+
+	// *this = *this + x
+	Matrix operator+(const float x) {
+		Matrix tmp(*this);
+		for (int i = 0; i < row; ++i){
+			for (int j = 0; j < col; ++j){
+				tmp(i, j) += x;
+			}
+		}
+		return tmp;
 	}
 
 	// *this = *this - obj
@@ -163,10 +170,21 @@ public:
 		}
 		else {
 			tmp.zero();
-			cblas_daxpy(row*col, -1, obj.index, 1, tmp.index, 1);
-			cblas_daxpy(row*col, 1, index, 1, tmp.index, 1);
+			cblas_saxpy(row*col, -1, obj.index, 1, tmp.index, 1);
+			cblas_saxpy(row*col, 1, index, 1, tmp.index, 1);
 			return tmp;
 		}
+	}
+
+	// *this = *this - x
+	Matrix operator-(const float x) {
+		Matrix tmp(*this);
+		for (int i = 0; i < row; ++i){
+			for (int j = 0; j < col; ++j){
+				tmp(i, j) -= x;
+			}
+		}
+		return tmp;
 	}
 
 	friend Matrix operator*(const Matrix& obj1, const Matrix& obj2) {
@@ -177,20 +195,20 @@ public:
 		}
 		else {
 			Matrix tmp(obj1.row, obj2.col);
-			cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, obj1.row, obj2.col, obj1.col, 1, obj1.index, obj1.col, obj2.index, obj2.col, 0, tmp.index, obj2.col);
+			cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, obj1.row, obj2.col, obj1.col, 1, obj1.index, obj1.col, obj2.index, obj2.col, 0, tmp.index, obj2.col);
 			return tmp;
 		}
 	}
 
-	friend Matrix operator*(const Matrix& obj, const double x) {
+	friend Matrix operator*(const Matrix& obj, const float x) {
 		Matrix tmp(obj);
-		cblas_dscal(obj.row*obj.col, x, tmp.index, 1);
+		cblas_sscal(obj.row*obj.col, x, tmp.index, 1);
 		return tmp;
 	}
 
-	friend Matrix operator/(const Matrix& obj, const double x) {
+	friend Matrix operator/(const Matrix& obj, const float x) {
 		Matrix tmp(obj);
-		cblas_dscal(obj.row*obj.col, 1/x, tmp.index, 1);
+		cblas_sscal(obj.row*obj.col, 1/x, tmp.index, 1);
 		return tmp;
 	}
 
@@ -198,8 +216,8 @@ public:
 		free(index);
 		row = obj.row;
 		col = obj.col;
-		index = (double *)malloc( row*col*sizeof( double ));
-		cblas_dcopy(row*col, obj.index, 1, index, 1);
+		index = (float *)malloc( row*col*sizeof( float ));
+		cblas_scopy(row*col, obj.index, 1, index, 1);
 		return *this;
 	}
 
@@ -207,7 +225,7 @@ public:
 	Matrix trans() {
 		Matrix tmp(col, row);
 		for (int i = 0; i < col; ++i) {
-			cblas_dcopy(row, index + i, col, tmp.index + i*row, 1);
+			cblas_scopy(row, index + i, col, tmp.index + i*row, 1);
 		}
 		return tmp;
 	}
@@ -216,19 +234,19 @@ public:
 	Matrix block(int x, int y, int new_row, int new_col) {
 		Matrix tmp(new_row, new_col);
 		for (int i = 0; i < new_row; ++i) {
-			cblas_dcopy(new_col, index + (i + x)*col, 1, tmp.index + i*new_col, 1);
+			cblas_scopy(new_col, index + (i + x)*col, 1, tmp.index + i*new_col, 1);
 		}
 		return tmp;
 	}
 
 	//行交换
 	void swaprow(const int i, const int j) {
-		cblas_dswap(col, index + i*col, 1, index + j*col, 1);
+		cblas_sswap(col, index + i*col, 1, index + j*col, 1);
 	}
 
 	//行变换
-	void rowmultik(int k, double x) {
-		cblas_dscal(col, x, index + k*col, 1);
+	void rowmultik(int k, float x) {
+		cblas_sscal(col, x, index + k*col, 1);
 	}
 
 	//求解线性方程组
@@ -239,12 +257,12 @@ public:
 		int inc = 1;
 		char trans = 'N';
 		int* ipiv = (int *)malloc( minInt(row, col)*sizeof( int ));
-		LAPACK_dgetrf(&row, &col, A.index, &row, ipiv, &info);
+		LAPACK_sgetrf(&row, &col, A.index, &row, ipiv, &info);
 		if (info < 0){
 			flag = false;
 			return b;
 		}
-		LAPACK_dgetrs(&trans, &row, &inc, A.index, &row, ipiv, x.index, &row, &info);
+		LAPACK_sgetrs(&trans, &row, &inc, A.index, &row, ipiv, x.index, &row, &info);
 		return x;
 	}
 
@@ -255,22 +273,47 @@ public:
 		int info;
 		int inc = 1;
 		int* ipiv = (int *)malloc( row*sizeof( int ));
-		LAPACK_dgesv(&row, &inc, A.index, &row, ipiv, x.index, &row, &info);
+		LAPACK_sgesv(&row, &inc, A.index, &row, ipiv, x.index, &row, &info);
 		return x;
 	}
 
 	//一维范数
-	double norm() {
-		return cblas_dnrm2(row*col, index, 1);
+	float norm() {
+		return cblas_snrm2(row*col, index, 1);
 	}
 	
 	//求取两向量夹角
-	friend double theta(Matrix obj1, Matrix obj2)
+	friend float theta(Matrix obj1, Matrix obj2)
 	{
 		if (obj1.row != obj2.row || obj1.col != 1 || obj2.col != 1) {
 			cout << "向量维数不相等！" << endl;
 			return 0;
 		}
-		return cblas_ddot(obj1.row, obj1.index, 1, obj2.index, 1) / obj1.norm() / obj2.norm();
+		return cblas_sdot(obj1.row, obj1.index, 1, obj2.index, 1) / obj1.norm() / obj2.norm();
+	}
+
+	//数组乘法
+	friend Matrix dot(Matrix obj1, Matrix obj2)
+	{
+		if (obj1.row != obj2.row || obj1.col != obj2.col) {
+			cout << "矩阵维数不相等！" << endl;
+			return obj1;
+		}
+		else {
+			Matrix tmp(obj1.row, obj1.col);
+			for (int i = 0; i < obj1.row; ++i){
+				for (int j = 0; j < obj1.col; ++j){
+					tmp(i, j) = obj1(i, j)*obj2(i, j);
+				}
+			}
+			return tmp;
+		}
+	}
+
+	//矩阵赋值
+	void cpy(Matrix obj, int x, int y) {
+		for (int i = 0; i < obj.row; ++i) {
+			cblas_scopy(obj.col, obj.index + i*obj.col, 1, index + (x + i)*col + y, 1);
+		}
 	}
 };

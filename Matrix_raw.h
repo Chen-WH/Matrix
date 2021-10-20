@@ -16,7 +16,7 @@ class Matrix
 private:
 	int row, col;
 public:
-	double** index;
+double** index;
 	Matrix(int x = 1, int y = 1) {
 		row = x;
 		col = y;
@@ -399,7 +399,7 @@ public:
 	}
 
 	//求解线性方程组
-	Matrix solve(const Matrix b, bool& flag) {
+	Matrix solve(const Matrix b) {
 		Matrix A(*this);
 		Matrix b2(b);
 		int i, j;
@@ -411,8 +411,7 @@ public:
 			if (j == A.row) {
 				cout << "wrong" << endl;
 				A.modify();
-				flag = false;
-				return A.solve(b, flag);
+				return A.solve(b);
 			}
 			else {
 				if (i != j) {
@@ -487,7 +486,7 @@ public:
 		double tmp = 0;
 		for (int i = 0; i < row; ++i) {
 			for (int j = 0; j < col; ++j) {
-				tmp += abs(index[i][j]);
+				tmp += fabs(index[i][j]);
 			}
 		}
 		return tmp;
